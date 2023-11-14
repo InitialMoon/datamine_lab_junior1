@@ -1,0 +1,212 @@
+\documentclass{article}
+
+\usepackage{xeCJK}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{indentfirst}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+
+\linespread{2}%修改行距
+\setlength{\parindent}{2em}
+
+% \geometry{a4paper,scale=0.8}
+
+\begin{document}
+
+\title{通信客户流失预警模型}
+\author{介应奇}
+\date{\today}
+\maketitle
+\tableofcontents
+
+\section{摘要}
+根据要求，本报告完成下列三个任务：
+\begin{itemize}
+  \item [1] 
+	读懂现有的代码里提供的模型,使用三个子模型分别预测然后综合预测结果给出是否离网的预测
+  \item [2]
+	写一个不做子模型区分的模型直接给出是否离网的预测
+  \item [3]
+	对比这两个模型的结果，并做出一定的解释
+\end{itemize}
+
+不包含对业务背景的说明。
+
+\section{拆分后加权平均模型}
+这部分模型的实现由老师和助教提供，下面我将结合提供的代码对这部分模型进行简要分析。
+
+\subsection{数据准备与读取}
+
+\paragraph{数据准备}
+
+该案例提供的数据文件为csv格式，一共有4个文件，其中colname\-pre.csv和colname.csv文件中分别写了预测和训练时使用的数据属性，其中第一列为属性名称序列，第二列为数据序列； 
+pre\_test文件里是测试时使用的具体数据，train-test文件里是训练用的具体数据。在这个实验中我们只是用了其中的colname.csv和train-test这两个文件，因为我们要评估融合的模型
+和拆分离网类型的模型效果那个好，因此需要有带标签的测试集，而colname.csv文件中只有属性名称序列，而pre\_test文件中没有flag数据，因此我们不使用。
+
+\paragraph{数据集理解}
+每个模型都将使用全部的这些数据集特征，只是每个模型具有的标签值在flag属性中用不同的数字做了区分:
+0-正常未流失  1-离网模型  2-携转模型  3-降档模型，对每一种模型我们使用其中的一个流失标签类别对模型进行训练，
+由于不同的用户离网都有不同的标签，所以最终这三个模型相当于每一个面模型使用了其中的一部分数据进行了训练，在是自己的类型和正常之间给出一个二分类模型，
+最终得到在三个不同标签属性下训练出来的模型，然后最终的结果用这三个模型给出的结果做加权平均给出。
+
+\subsection{数据处理}
+由于原始提供的数据中测试集和训练集的属性值是基于真实业务的，因此测试集中没有flag标签，我们无法做模型效果的对比，
+因此我将原本的pre\_test文件替换为了从train-test文件中切分出来的部分数据，这样就可以对比模型效果了。
+在测试集中，我将flag值中非零的值都用1来表示，统一用1表示离网，0表示稳定，好对两个模型进行统一的评级。
+
+下面是我切分数据的代码：
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/split\_data.png}
+	\caption{数据读取部分代码}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/convert01.png}
+	\caption{测试集数据转换部分代码}
+\end{figure}
+
+\subsubsection{数据读取}
+下面代码完成了数据的读取操作，过程是，先读入列属性文件，然后根据这个信息将属性值划分到3个列表中，区分属性的类型，
+这三个属性分别是要使用的属性，也就是出了none类型和标签，然后又区分了数值型数据和标称类数据，方便后面数据预处理。
+最后读入具体的数据到allcol\_list中，之后使用属性分组来获取其中对应的数据即可。
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/train\_data\_read.png}
+	\caption{数据读取部分代码}
+\end{figure}
+
+\subsubsection{数据预处理}
+下面代码完成了缺失值填充和类别数据的序列化
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/train\_data\_clean.png}
+	\caption{数据预处理部分代码}
+\end{figure}
+
+\subsection{子模型建立}
+在这里我们每个模型都是用相同的模型GradientBoostClassifier，
+只是数据不同，获得到了X和Y的做输入和输出数据后的操作都进行如下的公共操作：
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/get_model.png}
+	\caption{模型训练代码}
+\end{figure}
+
+下面根据flag标签获取相应的数据进行训练即可
+\subsubsection{离网模型获取}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/model1_data.png}
+	\caption{获取离网模型数据}
+\end{figure}
+
+\subsubsection{携转模型获取}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/model2_data.png}
+	\caption{获取携转模型数据}
+\end{figure}
+
+\subsubsection{降档模型获取}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/model3_data.png}
+	\caption{获取降档模型数据}
+\end{figure}
+
+
+\subsubsection{使用子模型综合预测结果}
+
+预测出每个模型给出的离网概率，并将他们的概率值取平均值，因为在我们假设训练集和测试集是独立同分布的，
+因此加权的过程我们可以使用子模型中离网类型的数量占比作为加权因子。
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/predict.png}
+	\caption{预测离网概率}
+\end{figure}
+
+\subsubsection{将概率值转换为是否离网的标称值}
+根据加权完的概率结果给出标签值, 当离网概率大于0.5时我们将其标为1，否则标为0，代码如下：
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/label_result.png}
+	\caption{标注结果}
+\end{figure}
+
+\subsection{评估结果}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/evl_result1.png}
+	\caption{评估结果代码}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/result1.png}
+	\caption{评估结果}
+\end{figure}
+
+\section{不做区别的一个模型}
+
+这个模型使用的数据和上面分割的是一致的
+\subsection{数据预处理}
+将训练集中的非零flag值都设置为1
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/label_train01.png}
+	\caption{标签值更改}
+\end{figure}
+
+\subsection{训练模型}
+使用与子模型相同的算法训练模型
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/only_train.png}
+	\caption{训练单个模型}
+\end{figure}
+
+\subsection{评估结果}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/evl_result2.png}
+	\caption{评估结果代码}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{./img/result2.png}
+	\caption{评估结果}
+\end{figure}
+
+\section{对比分析与总结}
+\subsection{对比分析}
+从两个模型在测试集中的评估结果来看:
+\begin{itemize}
+	\item 预测离网的精确率是第一个模型做的更好，0.78>0.68，高出了10\%，我认为这是由于子模型版本的模型在flag的多样性标签值中拟合到了更多的信息，因此精确率更高 
+	\item 预测离网的召回率是第二个模型更好0.30<0.72，相差了42\%，这是由于召回率评估的是模型找到流失用户的能力，由于子模型拆分的模型将用户的流失单纯的归因为三种，排除了其他的用户流失的可能性，因此不如不做区分的融合模型
+	\item 由于召回率相差过大，且在精确率上第一个模型也没有远超第二个模型，因此总体上来说，针对区分用户是否流失这件事情还是第二个模型的效果更由于召回率相差过大，且在精确率上第一个模型也没有远超第二个模型，因此总体上来说，针对区分用户是否流失这件事情还是第二个模型的效果更好。
+\end{itemize}
+\subsection{总结}
+虽然在区分是否离网这件事情上，融合模型比子模型好，但是这并不代表区分了离网类型的模型就没有价值；相反，正因为区分了离网的类型，预测出离网这一事件对于运营商才了有价值，因为，只有知道了用户具体是
+因为什么原因离网才能采取相应的策略进行挽回，或者针对不同的类型采取不同的策略，而在这个方面可以说融合模型几乎没有什么应用价值，但这也提醒了我们，如果使用分类别的离网预测模型，那么我们就要注意离网与否
+的预测可能会有很大的疏漏，这也是运营商需要注意的地方，如果想要进行改良的话可以通过增加模型类别的方式进行，也就是提高信息密度的方式。
+
+
+至此我们分析了使用两种模型的利与弊。
+
+
+\section{鸣谢}
+感谢袁汉宁老师和助教为本实验报告提供了代码框架，以及加权平均模型部分的大部分代码，以及PPT讲解。
+
+\bibliographystyle{unsrt}      %参考文献样式
+\bibliography{D:/Data/paper_database/better-bibtex/refe}  
+
+\end{document}
